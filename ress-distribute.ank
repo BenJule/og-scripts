@@ -1,5 +1,5 @@
-/* Ressourcenverteilung 100% Ank-kompatibel
- * Deutsche Logs mit Icons
+/* Resource distribution 100% Ank-compatible
+ * English logs with icons
  */
 
 splitPlanetWorkers = "allPlanets"
@@ -12,7 +12,7 @@ roundFactor      = 500000
 STRINGS = import("strings")
 
 func sendFleet(fromCel, toCel, resources, mission, ships) {
-    Print("🚀 Sende Flotte von", fromCel, "nach", toCel, "mit Ressourcen", resources, "Mission", mission, "Schiffe", ships)
+    Print("🚀 Sending fleet from", fromCel, "to", toCel, "with resources", resources, "Mission", mission, "Ships", ships)
     fleet = nil
     speed = HUNDRED_PERCENT
     for {
@@ -22,7 +22,7 @@ func sendFleet(fromCel, toCel, resources, mission, ships) {
             fleetList, _ = GetFleets()
             waitTime = 0
             for f in fleetList { if waitTime == 0 || f.BackIn < waitTime { waitTime = f.BackIn } }
-            LogInfo("⏳ Keine freien Flottenslots, warte " + ShortDur(waitTime))
+            LogInfo("⏳ No free fleet slots, waiting " + ShortDur(waitTime))
             Sleep((waitTime + 5) * 1000)
         } else {
             f = NewFleet()
@@ -35,9 +35,9 @@ func sendFleet(fromCel, toCel, resources, mission, ships) {
             f, err = f.SendNow()
             if err != nil {
                 if STRINGS.Contains(err.Error(), "not enough cargo capacity for fuel") {
-                    LogError("⚠️ Flottenversand-Fehler, reduziere Geschwindigkeit")
-                    if speed < 1 { LogError("❌ Flottenversand fehlgeschlagen bei 10% Geschwindigkeit"); break } else { speed-- }
-                } else { LogError("❌ Flottenversand-Fehler:", err); break }
+                    LogError("⚠️ Fleet send error, reducing speed")
+                    if speed < 1 { LogError("❌ Fleet dispatch failed at 10% speed"); break } else { speed-- }
+                } else { LogError("❌ Fleet send error:", err); break }
             } else { fleet = f; break }
         }
     }
@@ -45,13 +45,13 @@ func sendFleet(fromCel, toCel, resources, mission, ships) {
 }
 
 func doWork() {
-    LogInfo("🔄 Starte Ressourcenverteilung ....")
+    LogInfo("🔄 Starting resource distribution ....")
     allRes      = NewResources(0,0,0)
     planetList  = []
     celCanOffer = {}
     celNeed     = {}
 
-    // Alle Ressourcen sammeln
+    // Collect all resources
     allResourcesMap = GetAllResources()[0]
     for coord, res in allResourcesMap { 
         tmpCel = GetCachedCelestial(coord)
@@ -59,7 +59,7 @@ func doWork() {
         celCanOffer[tmpCel] = res
     }
 
-    // Planetenliste erstellen
+    // Create planet list
     if splitPlanetWorkers == "allPlanets" {
         planetList = planetList + GetCachedPlanets()
         planetList = planetList + GetCachedMoons()
@@ -75,7 +75,7 @@ func doWork() {
                                 allRes.Crystal/planetsCount,
                                 allRes.Deuterium/planetsCount)
 
-    // Bedarf pro Planet berechnen
+    // Calculate needs per planet
     for p in planetList {
         resCel = p.GetResources()[0]; Sleep(Random(500,800))
 
@@ -87,7 +87,7 @@ func doWork() {
         if need.Total() > 0 { celNeed[p] = need }
     }
 
-    // Ressourcenverteilung vorbereiten
+    // Prepare resource distribution
     finalList = []
     for needCel, _ in celNeed {
         for start in GetSortedCelestials(needCel.Coordinate) {
@@ -118,7 +118,7 @@ func doWork() {
                     celNeed[needCel] = celNeed[needCel].Sub(NewResources(0,0,sendAmount))
                 }
 
-                // Rundung
+                // Rounding
                 resToSend = NewResources(Floor(resToSend.Metal/roundFactor)*roundFactor,
                                          Floor(resToSend.Crystal/roundFactor)*roundFactor,
                                          Floor(resToSend.Deuterium/roundFactor)*roundFactor)
@@ -134,14 +134,14 @@ func doWork() {
         }
     }
 
-    // Versand mit Auto-Splitting & allen Schiffstypen
+    // Dispatch with auto-splitting & all ship types
     for i in finalList {
         tmp = i
         tmpFromCel = tmp["fromCel"]
         tmpToCel   = tmp["toCel"]
         tmpRes     = tmp["res"]
 
-        LogInfo("📦 Versende Ressourcen von", tmpFromCel.Coordinate, "➡️", tmpToCel.Coordinate, "Menge:", tmpRes)
+        LogInfo("📦 Sending resources from", tmpFromCel.Coordinate, "➡️", tmpToCel.Coordinate, "Amount:", tmpRes)
 
         myShips = tmpFromCel.GetShips()[0]; Sleep(Random(500,800))
         remainingRes = tmpRes
@@ -159,7 +159,7 @@ func doWork() {
             if myShips.Pathfinder > 0 { tmpShips.Set(PATHFINDER, myShips.Pathfinder) }
 
             totalCargo = CalcTotalCargo(tmpShips)
-            if totalCargo == 0 { LogError("❌ Nicht genug Transportschiffe für restliche Ressourcen"); break }
+            if totalCargo == 0 { LogError("❌ Not enough cargo ships for remaining resources"); break }
 
             sendAmount = Min(remainingRes.Total(), totalCargo)
             partialRes = NewResources(
@@ -168,7 +168,7 @@ func doWork() {
                 Min(remainingRes.Deuterium, sendAmount)
             )
 
-            // ANK-kompatible Variablenübergabe
+            // ANK-compatible variable passing
             tmpFromVar  = tmpFromCel
             tmpToVar    = tmpToCel
             tmpResVar   = partialRes
@@ -182,7 +182,7 @@ func doWork() {
         }
     }
 
-    LogInfo("✅ Ressourcenverteilung abgeschlossen!")
+    LogInfo("✅ Resource distribution completed!")
 }
 
 doWork()
