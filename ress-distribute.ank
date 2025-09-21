@@ -1,0 +1,188 @@
+/* Ressourcenverteilung 100% Ank-kompatibel
+ * Deutsche Logs mit Icons
+ */
+
+splitPlanetWorkers = "allPlanets"
+//splitPlanetWorkers = ["M:1:2:4", "P:2:3:4"]
+splitMetal       = true
+splitCrystal     = true
+splitDeuterium   = true
+roundFactor      = 500000
+
+STRINGS = import("strings")
+
+func sendFleet(fromCel, toCel, resources, mission, ships) {
+    Print("🚀 Sende Flotte von", fromCel, "nach", toCel, "mit Ressourcen", resources, "Mission", mission, "Schiffe", ships)
+    fleet = nil
+    speed = HUNDRED_PERCENT
+    for {
+        slots = GetSlots()
+        freeSlots = slots.Total - slots.InUse
+        if freeSlots <= GetFleetSlotsReserved() {
+            fleetList, _ = GetFleets()
+            waitTime = 0
+            for f in fleetList { if waitTime == 0 || f.BackIn < waitTime { waitTime = f.BackIn } }
+            LogInfo("⏳ Keine freien Flottenslots, warte " + ShortDur(waitTime))
+            Sleep((waitTime + 5) * 1000)
+        } else {
+            f = NewFleet()
+            f.SetOrigin(fromCel)
+            f.SetDestination(toCel)
+            if resources != nil { f.SetResources(resources) }
+            f.SetSpeed(speed)
+            f.SetMission(mission)
+            f.SetShips(ships)
+            f, err = f.SendNow()
+            if err != nil {
+                if STRINGS.Contains(err.Error(), "not enough cargo capacity for fuel") {
+                    LogError("⚠️ Flottenversand-Fehler, reduziere Geschwindigkeit")
+                    if speed < 1 { LogError("❌ Flottenversand fehlgeschlagen bei 10% Geschwindigkeit"); break } else { speed-- }
+                } else { LogError("❌ Flottenversand-Fehler:", err); break }
+            } else { fleet = f; break }
+        }
+    }
+    return fleet
+}
+
+func doWork() {
+    LogInfo("🔄 Starte Ressourcenverteilung ....")
+    allRes      = NewResources(0,0,0)
+    planetList  = []
+    celCanOffer = {}
+    celNeed     = {}
+
+    // Alle Ressourcen sammeln
+    allResourcesMap = GetAllResources()[0]
+    for coord, res in allResourcesMap { 
+        tmpCel = GetCachedCelestial(coord)
+        allRes = allRes.Add(res)
+        celCanOffer[tmpCel] = res
+    }
+
+    // Planetenliste erstellen
+    if splitPlanetWorkers == "allPlanets" {
+        planetList = planetList + GetCachedPlanets()
+        planetList = planetList + GetCachedMoons()
+    } else {
+        for planet in splitPlanetWorkers {
+            pList = GetPlanet(planet)
+            if len(pList) > 0 { planetList = planetList + [pList[0]]; Sleep(Random(500,800)) }
+        }
+    }
+
+    planetsCount = len(planetList)
+    resPerCel    = NewResources(allRes.Metal/planetsCount,
+                                allRes.Crystal/planetsCount,
+                                allRes.Deuterium/planetsCount)
+
+    // Bedarf pro Planet berechnen
+    for p in planetList {
+        resCel = p.GetResources()[0]; Sleep(Random(500,800))
+
+        need = NewResources(0,0,0)
+        if resCel.Metal < resPerCel.Metal { need = need.Add(NewResources(resPerCel.Metal - resCel.Metal,0,0)) }
+        if resCel.Crystal < resPerCel.Crystal { need = need.Add(NewResources(0,resPerCel.Crystal - resCel.Crystal,0)) }
+        if resCel.Deuterium < resPerCel.Deuterium { need = need.Add(NewResources(0,0,resPerCel.Deuterium - resCel.Deuterium)) }
+
+        if need.Total() > 0 { celNeed[p] = need }
+    }
+
+    // Ressourcenverteilung vorbereiten
+    finalList = []
+    for needCel, _ in celNeed {
+        for start in GetSortedCelestials(needCel.Coordinate) {
+            if start.GetType() != PLANET_TYPE && start.GetType() != MOON_TYPE { continue }
+
+            if needCel.Coordinate.Equal(start.Coordinate) {
+                tmpRes = celCanOffer[start].Sub(resPerCel)
+                celCanOffer[start] = tmpRes
+            } else if celNeed[needCel].Total() > 0 {
+                resToSend = NewResources(0,0,0)
+
+                if splitMetal && celNeed[needCel].Metal > 0 {
+                    sendAmount = Min(celNeed[needCel].Metal, celCanOffer[start].Metal)
+                    resToSend = resToSend.Add(NewResources(sendAmount,0,0))
+                    celCanOffer[start] = celCanOffer[start].Sub(NewResources(sendAmount,0,0))
+                    celNeed[needCel] = celNeed[needCel].Sub(NewResources(sendAmount,0,0))
+                }
+                if splitCrystal && celNeed[needCel].Crystal > 0 {
+                    sendAmount = Min(celNeed[needCel].Crystal, celCanOffer[start].Crystal)
+                    resToSend = resToSend.Add(NewResources(0,sendAmount,0))
+                    celCanOffer[start] = celCanOffer[start].Sub(NewResources(0,sendAmount,0))
+                    celNeed[needCel] = celNeed[needCel].Sub(NewResources(0,sendAmount,0))
+                }
+                if splitDeuterium && celNeed[needCel].Deuterium > 0 {
+                    sendAmount = Min(celNeed[needCel].Deuterium, celCanOffer[start].Deuterium)
+                    resToSend = resToSend.Add(NewResources(0,0,sendAmount))
+                    celCanOffer[start] = celCanOffer[start].Sub(NewResources(0,0,sendAmount))
+                    celNeed[needCel] = celNeed[needCel].Sub(NewResources(0,0,sendAmount))
+                }
+
+                // Rundung
+                resToSend = NewResources(Floor(resToSend.Metal/roundFactor)*roundFactor,
+                                         Floor(resToSend.Crystal/roundFactor)*roundFactor,
+                                         Floor(resToSend.Deuterium/roundFactor)*roundFactor)
+
+                if resToSend.Total() > 0 {
+                    tmpMap = {}
+                    tmpMap["fromCel"] = start
+                    tmpMap["toCel"]   = needCel
+                    tmpMap["res"]     = resToSend
+                    finalList = finalList + [tmpMap]
+                }
+            }
+        }
+    }
+
+    // Versand mit Auto-Splitting & allen Schiffstypen
+    for i in finalList {
+        tmp = i
+        tmpFromCel = tmp["fromCel"]
+        tmpToCel   = tmp["toCel"]
+        tmpRes     = tmp["res"]
+
+        LogInfo("📦 Versende Ressourcen von", tmpFromCel.Coordinate, "➡️", tmpToCel.Coordinate, "Menge:", tmpRes)
+
+        myShips = tmpFromCel.GetShips()[0]; Sleep(Random(500,800))
+        remainingRes = tmpRes
+
+        for {
+            if remainingRes.Total() == 0 { break }
+
+            tmpShips = NewShipsInfos()
+            if myShips.LargeCargo > 0 { tmpShips.Set(LARGECARGO, myShips.LargeCargo) }
+            if myShips.SmallCargo > 0 { tmpShips.Set(SMALLCARGO, myShips.SmallCargo) }
+            if myShips.Reaper > 0 { tmpShips.Set(REAPER, myShips.Reaper) }
+            if myShips.Battlecruiser > 0 { tmpShips.Set(BATTLECRUISER, myShips.Battlecruiser) }
+            if myShips.Bomber > 0 { tmpShips.Set(BOMBER, myShips.Bomber) }
+            if myShips.Destroyer > 0 { tmpShips.Set(DESTROYER, myShips.Destroyer) }
+            if myShips.Pathfinder > 0 { tmpShips.Set(PATHFINDER, myShips.Pathfinder) }
+
+            totalCargo = CalcTotalCargo(tmpShips)
+            if totalCargo == 0 { LogError("❌ Nicht genug Transportschiffe für restliche Ressourcen"); break }
+
+            sendAmount = Min(remainingRes.Total(), totalCargo)
+            partialRes = NewResources(
+                Min(remainingRes.Metal, sendAmount),
+                Min(remainingRes.Crystal, sendAmount),
+                Min(remainingRes.Deuterium, sendAmount)
+            )
+
+            // ANK-kompatible Variablenübergabe
+            tmpFromVar  = tmpFromCel
+            tmpToVar    = tmpToCel
+            tmpResVar   = partialRes
+            tmpShipsVar = tmpShips
+
+            f = sendFleet(tmpFromVar, tmpToVar, tmpResVar, TRANSPORT, tmpShipsVar)
+            Sleep(Random(15000,50000))
+
+            remainingRes = remainingRes.Sub(partialRes)
+            myShips = SubtractShips(myShips, tmpShips)
+        }
+    }
+
+    LogInfo("✅ Ressourcenverteilung abgeschlossen!")
+}
+
+doWork()
