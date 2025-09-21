@@ -162,11 +162,7 @@ func doWork() {
             if totalCargo == 0 { LogError("❌ Not enough cargo ships for remaining resources"); break }
 
             sendAmount = Min(remainingRes.Total(), totalCargo)
-            partialRes = NewResources(
-                Min(remainingRes.Metal, sendAmount),
-                Min(remainingRes.Crystal, sendAmount),
-                Min(remainingRes.Deuterium, sendAmount)
-            )
+            partialRes = NewResources()
 
             // ANK-compatible variable passing
             tmpFromVar  = tmpFromCel
