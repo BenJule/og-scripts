@@ -38,7 +38,7 @@
  *   - Alternative: Twice daily for very active players
  *   - Manual execution available for immediate redistribution
  *
- * Author: Claude (Anthropic)
+ * Author: BenLue
  * Created: 2025
  * Version: 2.0 - Fleet Movement Aware
  * Compatible with: OGame.ninja API
@@ -249,39 +249,54 @@ func distributeFleets() {
             continue
         }
         
-        // Add incoming ships to current count
+        // Create adjusted ship count including incoming ships
+        adjustedMoonShips = NewShipsInfos()
+        adjustedMoonShips.LightFighter = currentShips.LightFighter
+        adjustedMoonShips.HeavyFighter = currentShips.HeavyFighter
+        adjustedMoonShips.Cruiser = currentShips.Cruiser
+        adjustedMoonShips.Battleship = currentShips.Battleship
+        adjustedMoonShips.Battlecruiser = currentShips.Battlecruiser
+        adjustedMoonShips.Destroyer = currentShips.Destroyer
+        adjustedMoonShips.Recycler = currentShips.Recycler
+        adjustedMoonShips.EspionageProbe = currentShips.EspionageProbe
+        adjustedMoonShips.Reaper = currentShips.Reaper
+        adjustedMoonShips.Pathfinder = currentShips.Pathfinder
+        adjustedMoonShips.LargeCargo = currentShips.LargeCargo
+        adjustedMoonShips.SmallCargo = currentShips.SmallCargo
+        
+        // Add incoming ships to adjusted count
         moonKey = moon.GetCoordinate().String()
         incoming = incomingShips[moonKey]
         if incoming != nil {
             LogInfo("    ✈️ Incoming ships:", incoming.CountShips())
-            currentShips.LightFighter = currentShips.LightFighter + incoming.LightFighter
-            currentShips.HeavyFighter = currentShips.HeavyFighter + incoming.HeavyFighter
-            currentShips.Cruiser = currentShips.Cruiser + incoming.Cruiser
-            currentShips.Battleship = currentShips.Battleship + incoming.Battleship
-            currentShips.Battlecruiser = currentShips.Battlecruiser + incoming.Battlecruiser
-            currentShips.Destroyer = currentShips.Destroyer + incoming.Destroyer
-            currentShips.Recycler = currentShips.Recycler + incoming.Recycler
-            currentShips.EspionageProbe = currentShips.EspionageProbe + incoming.EspionageProbe
-            currentShips.Reaper = currentShips.Reaper + incoming.Reaper
-            currentShips.Pathfinder = currentShips.Pathfinder + incoming.Pathfinder
-            currentShips.LargeCargo = currentShips.LargeCargo + incoming.LargeCargo
-            currentShips.SmallCargo = currentShips.SmallCargo + incoming.SmallCargo
+            adjustedMoonShips.LightFighter = adjustedMoonShips.LightFighter + incoming.LightFighter
+            adjustedMoonShips.HeavyFighter = adjustedMoonShips.HeavyFighter + incoming.HeavyFighter
+            adjustedMoonShips.Cruiser = adjustedMoonShips.Cruiser + incoming.Cruiser
+            adjustedMoonShips.Battleship = adjustedMoonShips.Battleship + incoming.Battleship
+            adjustedMoonShips.Battlecruiser = adjustedMoonShips.Battlecruiser + incoming.Battlecruiser
+            adjustedMoonShips.Destroyer = adjustedMoonShips.Destroyer + incoming.Destroyer
+            adjustedMoonShips.Recycler = adjustedMoonShips.Recycler + incoming.Recycler
+            adjustedMoonShips.EspionageProbe = adjustedMoonShips.EspionageProbe + incoming.EspionageProbe
+            adjustedMoonShips.Reaper = adjustedMoonShips.Reaper + incoming.Reaper
+            adjustedMoonShips.Pathfinder = adjustedMoonShips.Pathfinder + incoming.Pathfinder
+            adjustedMoonShips.LargeCargo = adjustedMoonShips.LargeCargo + incoming.LargeCargo
+            adjustedMoonShips.SmallCargo = adjustedMoonShips.SmallCargo + incoming.SmallCargo
         }
         
-        LogInfo("    📊 Current + incoming ships:", currentShips.CountShips())
+        LogInfo("    📊 Current + incoming ships:", adjustedMoonShips.CountShips())
         
-        // Calculate what this moon needs
+        // Calculate what this moon needs (using adjusted count)
         neededShips = NewShipsInfos()
-        neededShips.LightFighter = Max(0, targetPerMoon.LightFighter - currentShips.LightFighter)
-        neededShips.HeavyFighter = Max(0, targetPerMoon.HeavyFighter - currentShips.HeavyFighter)
-        neededShips.Cruiser = Max(0, targetPerMoon.Cruiser - currentShips.Cruiser)
-        neededShips.Battleship = Max(0, targetPerMoon.Battleship - currentShips.Battleship)
-        neededShips.Battlecruiser = Max(0, targetPerMoon.Battlecruiser - currentShips.Battlecruiser)
-        neededShips.Destroyer = Max(0, targetPerMoon.Destroyer - currentShips.Destroyer)
-        neededShips.Recycler = Max(0, targetPerMoon.Recycler - currentShips.Recycler)
-        neededShips.EspionageProbe = Max(0, targetPerMoon.EspionageProbe - currentShips.EspionageProbe)
-        neededShips.Reaper = Max(0, targetPerMoon.Reaper - currentShips.Reaper)
-        neededShips.Pathfinder = Max(0, targetPerMoon.Pathfinder - currentShips.Pathfinder)
+        neededShips.LightFighter = Max(0, targetPerMoon.LightFighter - adjustedMoonShips.LightFighter)
+        neededShips.HeavyFighter = Max(0, targetPerMoon.HeavyFighter - adjustedMoonShips.HeavyFighter)
+        neededShips.Cruiser = Max(0, targetPerMoon.Cruiser - adjustedMoonShips.Cruiser)
+        neededShips.Battleship = Max(0, targetPerMoon.Battleship - adjustedMoonShips.Battleship)
+        neededShips.Battlecruiser = Max(0, targetPerMoon.Battlecruiser - adjustedMoonShips.Battlecruiser)
+        neededShips.Destroyer = Max(0, targetPerMoon.Destroyer - adjustedMoonShips.Destroyer)
+        neededShips.Recycler = Max(0, targetPerMoon.Recycler - adjustedMoonShips.Recycler)
+        neededShips.EspionageProbe = Max(0, targetPerMoon.EspionageProbe - adjustedMoonShips.EspionageProbe)
+        neededShips.Reaper = Max(0, targetPerMoon.Reaper - adjustedMoonShips.Reaper)
+        neededShips.Pathfinder = Max(0, targetPerMoon.Pathfinder - adjustedMoonShips.Pathfinder)
         neededShips.LargeCargo = Max(0, targetPerMoon.LargeCargo)
         neededShips.SmallCargo = Max(0, targetPerMoon.SmallCargo)
         
@@ -391,17 +406,37 @@ func distributeFleets() {
             
             // Send fleet if we have ships
             if toSend.CountShips() > 0 {
-                LogInfo("🚀 Sending", toSend.CountShips(), "ships from", sourceCel.Coordinate, "to", moon.Coordinate)
+                LogInfo("🚀 Preparing to send", toSend.CountShips(), "ships from", sourceCel.Coordinate, "to", moon.Coordinate)
+                
+                // Check fleet slots multiple times with longer waits
+                fleets, slots = GetFleets()
+                if slots.InUse >= slots.Total {
+                    LogWarn("⏳ All fleet slots in use (" + slots.InUse + "/" + slots.Total + "). Waiting 5 minutes...")
+                    Sleep(300000) // Wait 5 minutes
+                    
+                    fleets, slots = GetFleets()
+                    if slots.InUse >= slots.Total {
+                        LogWarn("⏸️ Still no slots available after 5 minutes. Postponing this distribution.")
+                        LogInfo("💡 Suggestion: Run this script when most expeditions have returned")
+                        LogInfo("🔄 This transfer will be attempted in the next scheduled run")
+                        continue
+                    }
+                }
+                
+                LogInfo("✅ Fleet slot available (" + slots.InUse + "/" + slots.Total + "). Sending fleet...")
                 
                 sentFleet, err = sourceCel.SendFleet(*toSend, HUNDRED_PERCENT, moon.GetCoordinate(), PARK, NewResources(0, 0, 0), 0, 0)
                 
                 if err != nil {
                     LogError("❌ Fleet send failed:", err)
+                    if err.Error() == "all slots are in use" {
+                        LogWarn("⚠️ Slots filled up during send. Will retry in next scheduled run.")
+                    }
                 } else {
                     LogInfo("✅ Fleet sent successfully - ID:", sentFleet.ID)
                 }
                 
-                Sleep(Random(5000, 10000))
+                Sleep(Random(10000, 15000)) // Longer delay between sends
             }
             
             // Check if moon is satisfied
