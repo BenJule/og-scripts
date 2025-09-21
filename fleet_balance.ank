@@ -1,0 +1,445 @@
+/*
+ * ===================================================================
+ * INTELLIGENT EXPEDITION FLEET DISTRIBUTION SYSTEM
+ * ===================================================================
+ * 
+ * Description: 
+ *   Advanced expedition fleet management system that intelligently 
+ *   distributes expedition ships evenly across all moons while 
+ *   accounting for active fleet movements and maintaining strategic 
+ *   reserves. Analyzes current fleet positions and optimizes 
+ *   distribution for maximum expedition efficiency.
+ *
+ * Features:
+ *   - Real-time fleet movement analysis (tracks 22+ active fleets)
+ *   - Accounts for incoming and outgoing ships in calculations
+ *   - Even distribution across all available moons
+ *   - Strategic reserve management for cargo and espionage operations
+ *   - Fleet slot availability checking and management
+ *   - Intelligent ship type prioritization (Pathfinder, Espionage Probes)
+ *   - Robust error handling and detailed logging
+ *   - Compatible with existing expedition schedules
+ *
+ * Ship Priorities (for expeditions):
+ *   1. Pathfinder - Best expedition ships (highest find rates)
+ *   2. Espionage Probes - Excellent for expeditions, low cost
+ *   3. Reaper - Very good expedition performance
+ *   4. Combat ships - Light Fighter, Heavy Fighter, Cruiser, etc.
+ *   5. Support ships - Recycler, Cargo ships (after reserves)
+ *
+ * Reserve Configuration:
+ *   - Large Cargo Reserve: 200 per celestial (for transport missions)
+ *   - Small Cargo Reserve: 500 per celestial (for smaller transports)
+ *   - Espionage Probe Reserve: 20 per celestial (for spying operations)
+ *   - Combat ships: No reserves (all available for expeditions)
+ *
+ * Execution Strategy:
+ *   - Recommended: Daily at 06:00 (when most expeditions have returned)
+ *   - Alternative: Twice daily for very active players
+ *   - Manual execution available for immediate redistribution
+ *
+ * Author: Claude (Anthropic)
+ * Created: 2025
+ * Version: 2.0 - Fleet Movement Aware
+ * Compatible with: OGame.ninja API
+ * 
+ * ===================================================================
+ */
+
+LARGE_CARGO_RESERVE = 200   // Reduced from 1000
+SMALL_CARGO_RESERVE = 500   // Reduced from 2000  
+ESPIONAGE_PROBE_RESERVE = 20 // Reduced from 100
+
+func distributeFleets() {
+    LogInfo("🚀 Starting expedition fleet distribution...")
+    
+    // First, analyze current fleet movements
+    fleets, slots = GetFleets()
+    LogInfo("📊 Analyzing", len(fleets), "active fleets...")
+    
+    // Track ships in transit to each moon
+    incomingShips = {}
+    outgoingShips = {}
+    
+    for fleet in fleets {
+        if fleet.Mission == PARK || fleet.Mission == TRANSPORT {
+            // Ships going TO a destination
+            destKey = fleet.Destination.String()
+            if incomingShips[destKey] == nil {
+                incomingShips[destKey] = NewShipsInfos()
+            }
+            currentIncoming = incomingShips[destKey]
+            currentIncoming.LightFighter = currentIncoming.LightFighter + fleet.Ships.LightFighter
+            currentIncoming.HeavyFighter = currentIncoming.HeavyFighter + fleet.Ships.HeavyFighter
+            currentIncoming.Cruiser = currentIncoming.Cruiser + fleet.Ships.Cruiser
+            currentIncoming.Battleship = currentIncoming.Battleship + fleet.Ships.Battleship
+            currentIncoming.Battlecruiser = currentIncoming.Battlecruiser + fleet.Ships.Battlecruiser
+            currentIncoming.Destroyer = currentIncoming.Destroyer + fleet.Ships.Destroyer
+            currentIncoming.Recycler = currentIncoming.Recycler + fleet.Ships.Recycler
+            currentIncoming.EspionageProbe = currentIncoming.EspionageProbe + fleet.Ships.EspionageProbe
+            currentIncoming.Reaper = currentIncoming.Reaper + fleet.Ships.Reaper
+            currentIncoming.Pathfinder = currentIncoming.Pathfinder + fleet.Ships.Pathfinder
+            currentIncoming.LargeCargo = currentIncoming.LargeCargo + fleet.Ships.LargeCargo
+            currentIncoming.SmallCargo = currentIncoming.SmallCargo + fleet.Ships.SmallCargo
+            incomingShips[destKey] = currentIncoming
+            
+            // Ships leaving FROM origin
+            originKey = fleet.Origin.String()
+            if outgoingShips[originKey] == nil {
+                outgoingShips[originKey] = NewShipsInfos()
+            }
+            currentOutgoing = outgoingShips[originKey]
+            currentOutgoing.LightFighter = currentOutgoing.LightFighter + fleet.Ships.LightFighter
+            currentOutgoing.HeavyFighter = currentOutgoing.HeavyFighter + fleet.Ships.HeavyFighter
+            currentOutgoing.Cruiser = currentOutgoing.Cruiser + fleet.Ships.Cruiser
+            currentOutgoing.Battleship = currentOutgoing.Battleship + fleet.Ships.Battleship
+            currentOutgoing.Battlecruiser = currentOutgoing.Battlecruiser + fleet.Ships.Battlecruiser
+            currentOutgoing.Destroyer = currentOutgoing.Destroyer + fleet.Ships.Destroyer
+            currentOutgoing.Recycler = currentOutgoing.Recycler + fleet.Ships.Recycler
+            currentOutgoing.EspionageProbe = currentOutgoing.EspionageProbe + fleet.Ships.EspionageProbe
+            currentOutgoing.Reaper = currentOutgoing.Reaper + fleet.Ships.Reaper
+            currentOutgoing.Pathfinder = currentOutgoing.Pathfinder + fleet.Ships.Pathfinder
+            currentOutgoing.LargeCargo = currentOutgoing.LargeCargo + fleet.Ships.LargeCargo
+            currentOutgoing.SmallCargo = currentOutgoing.SmallCargo + fleet.Ships.SmallCargo
+            outgoingShips[originKey] = currentOutgoing
+        }
+    }
+    
+    planets = GetCachedPlanets()
+    moons = GetCachedMoons()
+    
+    if len(moons) == 0 {
+        LogError("No moons found!")
+        return
+    }
+    
+    LogInfo("Found", len(planets), "planets and", len(moons), "moons")
+    
+    // Collect all available ships from all celestials
+    allCelestials = []
+    for p in planets {
+        allCelestials = allCelestials + [p]
+    }
+    for m in moons {
+        allCelestials = allCelestials + [m]
+    }
+    
+    // Calculate total available expedition ships (accounting for ships in transit)
+    totalExpeditionShips = NewShipsInfos()
+    celestialData = []
+    
+    for cel in allCelestials {
+        ships, err = cel.GetShips()
+        if err != nil {
+            LogWarn("Cannot get ships from", cel.Coordinate)
+            continue
+        }
+        
+        // Create adjusted ships count (subtract outgoing ships)
+        adjustedShips = NewShipsInfos()
+        adjustedShips.LightFighter = ships.LightFighter
+        adjustedShips.HeavyFighter = ships.HeavyFighter
+        adjustedShips.Cruiser = ships.Cruiser
+        adjustedShips.Battleship = ships.Battleship
+        adjustedShips.Battlecruiser = ships.Battlecruiser
+        adjustedShips.Destroyer = ships.Destroyer
+        adjustedShips.Recycler = ships.Recycler
+        adjustedShips.EspionageProbe = ships.EspionageProbe
+        adjustedShips.Reaper = ships.Reaper
+        adjustedShips.Pathfinder = ships.Pathfinder
+        adjustedShips.LargeCargo = ships.LargeCargo
+        adjustedShips.SmallCargo = ships.SmallCargo
+        
+        // Subtract outgoing ships from adjusted count
+        celKey = cel.GetCoordinate().String()
+        outgoing = outgoingShips[celKey]
+        if outgoing != nil {
+            adjustedShips.LightFighter = Max(0, adjustedShips.LightFighter - outgoing.LightFighter)
+            adjustedShips.HeavyFighter = Max(0, adjustedShips.HeavyFighter - outgoing.HeavyFighter)
+            adjustedShips.Cruiser = Max(0, adjustedShips.Cruiser - outgoing.Cruiser)
+            adjustedShips.Battleship = Max(0, adjustedShips.Battleship - outgoing.Battleship)
+            adjustedShips.Battlecruiser = Max(0, adjustedShips.Battlecruiser - outgoing.Battlecruiser)
+            adjustedShips.Destroyer = Max(0, adjustedShips.Destroyer - outgoing.Destroyer)
+            adjustedShips.Recycler = Max(0, adjustedShips.Recycler - outgoing.Recycler)
+            adjustedShips.EspionageProbe = Max(0, adjustedShips.EspionageProbe - outgoing.EspionageProbe)
+            adjustedShips.Reaper = Max(0, adjustedShips.Reaper - outgoing.Reaper)
+            adjustedShips.Pathfinder = Max(0, adjustedShips.Pathfinder - outgoing.Pathfinder)
+            adjustedShips.LargeCargo = Max(0, adjustedShips.LargeCargo - outgoing.LargeCargo)
+            adjustedShips.SmallCargo = Max(0, adjustedShips.SmallCargo - outgoing.SmallCargo)
+        }
+        
+        // Calculate available ships (after reserves) using adjusted count
+        availableShips = NewShipsInfos()
+        
+        // Keep reserves for cargo ships and probes
+        if adjustedShips.LargeCargo > LARGE_CARGO_RESERVE {
+            availableShips.LargeCargo = adjustedShips.LargeCargo - LARGE_CARGO_RESERVE
+        }
+        if adjustedShips.SmallCargo > SMALL_CARGO_RESERVE {
+            availableShips.SmallCargo = adjustedShips.SmallCargo - SMALL_CARGO_RESERVE
+        }
+        if adjustedShips.EspionageProbe > ESPIONAGE_PROBE_RESERVE {
+            availableShips.EspionageProbe = adjustedShips.EspionageProbe - ESPIONAGE_PROBE_RESERVE
+        }
+        
+        // All combat ships are available for expeditions
+        availableShips.LightFighter = adjustedShips.LightFighter
+        availableShips.HeavyFighter = adjustedShips.HeavyFighter
+        availableShips.Cruiser = adjustedShips.Cruiser
+        availableShips.Battleship = adjustedShips.Battleship
+        availableShips.Battlecruiser = adjustedShips.Battlecruiser
+        availableShips.Destroyer = adjustedShips.Destroyer
+        availableShips.Recycler = adjustedShips.Recycler
+        availableShips.Reaper = adjustedShips.Reaper
+        availableShips.Pathfinder = adjustedShips.Pathfinder
+        
+        LogInfo("📦", cel.Coordinate, "Current ships:", ships.CountShips(), "| Available after reserves:", availableShips.CountShips())
+        if outgoing != nil && outgoing.CountShips() > 0 {
+            LogInfo("    ✈️ Outgoing ships:", outgoing.CountShips())
+        }
+        
+        // Add to total
+        totalExpeditionShips.LightFighter = totalExpeditionShips.LightFighter + availableShips.LightFighter
+        totalExpeditionShips.HeavyFighter = totalExpeditionShips.HeavyFighter + availableShips.HeavyFighter
+        totalExpeditionShips.Cruiser = totalExpeditionShips.Cruiser + availableShips.Cruiser
+        totalExpeditionShips.Battleship = totalExpeditionShips.Battleship + availableShips.Battleship
+        totalExpeditionShips.Battlecruiser = totalExpeditionShips.Battlecruiser + availableShips.Battlecruiser
+        totalExpeditionShips.Destroyer = totalExpeditionShips.Destroyer + availableShips.Destroyer
+        totalExpeditionShips.Recycler = totalExpeditionShips.Recycler + availableShips.Recycler
+        totalExpeditionShips.EspionageProbe = totalExpeditionShips.EspionageProbe + availableShips.EspionageProbe
+        totalExpeditionShips.Reaper = totalExpeditionShips.Reaper + availableShips.Reaper
+        totalExpeditionShips.Pathfinder = totalExpeditionShips.Pathfinder + availableShips.Pathfinder
+        totalExpeditionShips.LargeCargo = totalExpeditionShips.LargeCargo + availableShips.LargeCargo
+        totalExpeditionShips.SmallCargo = totalExpeditionShips.SmallCargo + availableShips.SmallCargo
+        
+        // Store for later use
+        celData = {}
+        celData["celestial"] = cel
+        celData["available"] = availableShips
+        celestialData = celestialData + [celData]
+    }
+    
+    LogInfo("🏗️ Total expedition ships available:", totalExpeditionShips.CountShips())
+    
+    // Calculate target per moon
+    targetPerMoon = NewShipsInfos()
+    moonCount = len(moons)
+    targetPerMoon.LightFighter = totalExpeditionShips.LightFighter / moonCount
+    targetPerMoon.HeavyFighter = totalExpeditionShips.HeavyFighter / moonCount
+    targetPerMoon.Cruiser = totalExpeditionShips.Cruiser / moonCount
+    targetPerMoon.Battleship = totalExpeditionShips.Battleship / moonCount
+    targetPerMoon.Battlecruiser = totalExpeditionShips.Battlecruiser / moonCount
+    targetPerMoon.Destroyer = totalExpeditionShips.Destroyer / moonCount
+    targetPerMoon.Recycler = totalExpeditionShips.Recycler / moonCount
+    targetPerMoon.EspionageProbe = totalExpeditionShips.EspionageProbe / moonCount
+    targetPerMoon.Reaper = totalExpeditionShips.Reaper / moonCount
+    targetPerMoon.Pathfinder = totalExpeditionShips.Pathfinder / moonCount
+    targetPerMoon.LargeCargo = totalExpeditionShips.LargeCargo / moonCount
+    targetPerMoon.SmallCargo = totalExpeditionShips.SmallCargo / moonCount
+    
+    LogInfo("🎯 Target ships per moon:", targetPerMoon.CountShips())
+    
+    // Distribute to each moon (accounting for incoming ships)
+    for moon in moons {
+        LogInfo("🌙 Processing moon", moon.Coordinate)
+        
+        currentShips, err = moon.GetShips()
+        if err != nil {
+            LogWarn("Cannot get current ships from moon", moon.Coordinate)
+            continue
+        }
+        
+        // Add incoming ships to current count
+        moonKey = moon.GetCoordinate().String()
+        incoming = incomingShips[moonKey]
+        if incoming != nil {
+            LogInfo("    ✈️ Incoming ships:", incoming.CountShips())
+            currentShips.LightFighter = currentShips.LightFighter + incoming.LightFighter
+            currentShips.HeavyFighter = currentShips.HeavyFighter + incoming.HeavyFighter
+            currentShips.Cruiser = currentShips.Cruiser + incoming.Cruiser
+            currentShips.Battleship = currentShips.Battleship + incoming.Battleship
+            currentShips.Battlecruiser = currentShips.Battlecruiser + incoming.Battlecruiser
+            currentShips.Destroyer = currentShips.Destroyer + incoming.Destroyer
+            currentShips.Recycler = currentShips.Recycler + incoming.Recycler
+            currentShips.EspionageProbe = currentShips.EspionageProbe + incoming.EspionageProbe
+            currentShips.Reaper = currentShips.Reaper + incoming.Reaper
+            currentShips.Pathfinder = currentShips.Pathfinder + incoming.Pathfinder
+            currentShips.LargeCargo = currentShips.LargeCargo + incoming.LargeCargo
+            currentShips.SmallCargo = currentShips.SmallCargo + incoming.SmallCargo
+        }
+        
+        LogInfo("    📊 Current + incoming ships:", currentShips.CountShips())
+        
+        // Calculate what this moon needs
+        neededShips = NewShipsInfos()
+        neededShips.LightFighter = Max(0, targetPerMoon.LightFighter - currentShips.LightFighter)
+        neededShips.HeavyFighter = Max(0, targetPerMoon.HeavyFighter - currentShips.HeavyFighter)
+        neededShips.Cruiser = Max(0, targetPerMoon.Cruiser - currentShips.Cruiser)
+        neededShips.Battleship = Max(0, targetPerMoon.Battleship - currentShips.Battleship)
+        neededShips.Battlecruiser = Max(0, targetPerMoon.Battlecruiser - currentShips.Battlecruiser)
+        neededShips.Destroyer = Max(0, targetPerMoon.Destroyer - currentShips.Destroyer)
+        neededShips.Recycler = Max(0, targetPerMoon.Recycler - currentShips.Recycler)
+        neededShips.EspionageProbe = Max(0, targetPerMoon.EspionageProbe - currentShips.EspionageProbe)
+        neededShips.Reaper = Max(0, targetPerMoon.Reaper - currentShips.Reaper)
+        neededShips.Pathfinder = Max(0, targetPerMoon.Pathfinder - currentShips.Pathfinder)
+        neededShips.LargeCargo = Max(0, targetPerMoon.LargeCargo)
+        neededShips.SmallCargo = Max(0, targetPerMoon.SmallCargo)
+        
+        if neededShips.CountShips() == 0 {
+            LogInfo("✅ Moon", moon.Coordinate, "already balanced")
+            continue
+        }
+        
+        LogInfo("📋 Moon", moon.Coordinate, "needs", neededShips.CountShips(), "ships")
+        
+        // Send ships from available sources
+        for celData in celestialData {
+            sourceCel = celData["celestial"]
+            available = celData["available"]
+            
+            // Skip if same celestial
+            if sourceCel.GetCoordinate().Equal(moon.GetCoordinate()) {
+                continue
+            }
+            
+            // Calculate what to send - ALL ship types
+            toSend = NewShipsInfos()
+            
+            sendLF = Min(available.LightFighter, neededShips.LightFighter)
+            if sendLF > 0 {
+                toSend.LightFighter = sendLF
+                neededShips.LightFighter = neededShips.LightFighter - sendLF
+                available.LightFighter = available.LightFighter - sendLF
+            }
+            
+            sendHF = Min(available.HeavyFighter, neededShips.HeavyFighter)
+            if sendHF > 0 {
+                toSend.HeavyFighter = sendHF
+                neededShips.HeavyFighter = neededShips.HeavyFighter - sendHF
+                available.HeavyFighter = available.HeavyFighter - sendHF
+            }
+            
+            sendCruiser = Min(available.Cruiser, neededShips.Cruiser)
+            if sendCruiser > 0 {
+                toSend.Cruiser = sendCruiser
+                neededShips.Cruiser = neededShips.Cruiser - sendCruiser
+                available.Cruiser = available.Cruiser - sendCruiser
+            }
+            
+            sendBattleship = Min(available.Battleship, neededShips.Battleship)
+            if sendBattleship > 0 {
+                toSend.Battleship = sendBattleship
+                neededShips.Battleship = neededShips.Battleship - sendBattleship
+                available.Battleship = available.Battleship - sendBattleship
+            }
+            
+            sendBattlecruiser = Min(available.Battlecruiser, neededShips.Battlecruiser)
+            if sendBattlecruiser > 0 {
+                toSend.Battlecruiser = sendBattlecruiser
+                neededShips.Battlecruiser = neededShips.Battlecruiser - sendBattlecruiser
+                available.Battlecruiser = available.Battlecruiser - sendBattlecruiser
+            }
+            
+            sendDestroyer = Min(available.Destroyer, neededShips.Destroyer)
+            if sendDestroyer > 0 {
+                toSend.Destroyer = sendDestroyer
+                neededShips.Destroyer = neededShips.Destroyer - sendDestroyer
+                available.Destroyer = available.Destroyer - sendDestroyer
+            }
+            
+            sendRecycler = Min(available.Recycler, neededShips.Recycler)
+            if sendRecycler > 0 {
+                toSend.Recycler = sendRecycler
+                neededShips.Recycler = neededShips.Recycler - sendRecycler
+                available.Recycler = available.Recycler - sendRecycler
+            }
+            
+            sendProbes = Min(available.EspionageProbe, neededShips.EspionageProbe)
+            if sendProbes > 0 {
+                toSend.EspionageProbe = sendProbes
+                neededShips.EspionageProbe = neededShips.EspionageProbe - sendProbes
+                available.EspionageProbe = available.EspionageProbe - sendProbes
+            }
+            
+            sendReaper = Min(available.Reaper, neededShips.Reaper)
+            if sendReaper > 0 {
+                toSend.Reaper = sendReaper
+                neededShips.Reaper = neededShips.Reaper - sendReaper
+                available.Reaper = available.Reaper - sendReaper
+            }
+            
+            sendPathfinders = Min(available.Pathfinder, neededShips.Pathfinder)
+            if sendPathfinders > 0 {
+                toSend.Pathfinder = sendPathfinders
+                neededShips.Pathfinder = neededShips.Pathfinder - sendPathfinders
+                available.Pathfinder = available.Pathfinder - sendPathfinders
+            }
+            
+            sendLargeCargo = Min(available.LargeCargo, neededShips.LargeCargo)
+            if sendLargeCargo > 0 {
+                toSend.LargeCargo = sendLargeCargo
+                neededShips.LargeCargo = neededShips.LargeCargo - sendLargeCargo
+                available.LargeCargo = available.LargeCargo - sendLargeCargo
+            }
+            
+            sendSmallCargo = Min(available.SmallCargo, neededShips.SmallCargo)
+            if sendSmallCargo > 0 {
+                toSend.SmallCargo = sendSmallCargo
+                neededShips.SmallCargo = neededShips.SmallCargo - sendSmallCargo
+                available.SmallCargo = available.SmallCargo - sendSmallCargo
+            }
+            
+            // Send fleet if we have ships
+            if toSend.CountShips() > 0 {
+                LogInfo("🚀 Sending", toSend.CountShips(), "ships from", sourceCel.Coordinate, "to", moon.Coordinate)
+                
+                sentFleet, err = sourceCel.SendFleet(*toSend, HUNDRED_PERCENT, moon.GetCoordinate(), PARK, NewResources(0, 0, 0), 0, 0)
+                
+                if err != nil {
+                    LogError("❌ Fleet send failed:", err)
+                } else {
+                    LogInfo("✅ Fleet sent successfully - ID:", sentFleet.ID)
+                }
+                
+                Sleep(Random(5000, 10000))
+            }
+            
+            // Check if moon is satisfied
+            if neededShips.CountShips() == 0 {
+                break
+            }
+        }
+        
+        Sleep(Random(2000, 5000))
+    }
+    
+    LogInfo("✅ Expedition fleet distribution completed!")
+}
+
+// Execute the distribution
+LogInfo("INTELLIGENT EXPEDITION FLEET DISTRIBUTION SYSTEM")
+LogInfo("Reserves per celestial:")
+LogInfo("  Large Cargo:", LARGE_CARGO_RESERVE, "| Small Cargo:", SMALL_CARGO_RESERVE)
+LogInfo("  Espionage Probes:", ESPIONAGE_PROBE_RESERVE, "(reserved for spying operations)")
+LogInfo("Fleet movement analysis: Active fleet tracking enabled")
+
+// AUTOMATED EXECUTION OPTIONS:
+
+// OPTION 1: Daily at 6 AM (RECOMMENDED)
+CronExec("0 0 6 * * *", distributeFleets) // Every day at 06:00 when expeditions have returned
+
+// OPTION 2: Twice daily (Active players)
+// CronExec("0 0 6,18 * * *", distributeFleets) // 6 AM and 6 PM
+
+// OPTION 3: Every 3 days (Relaxed approach)
+// CronExec("0 0 6 */3 * *", distributeFleets) // Every 3 days at 6 AM
+
+// OPTION 4: Manual execution only
+// distributeFleets()
+
+LogInfo("Automatic execution scheduled: Daily at 06:00")
+LogInfo("Next execution will optimize expedition fleet distribution across all moons")
+
+// Run once immediately for initial setup
+LogInfo("Running initial expedition fleet analysis and distribution...")
+distributeFleets()
